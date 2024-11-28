@@ -1,0 +1,478 @@
+<?php
+    session_start();
+    include("database.php");
+    $admin_id = isset($_SESSION['admin_id']) ? $_SESSION['admin_id'] : 'Guest';
+
+    $query = "SELECT * FROM tracking ORDER BY trackid DESC";
+    $result = mysqli_query($con, $query);
+
+    if(mysqli_num_rows($result) > 0) {
+      while($row = mysqli_fetch_assoc($result)) {
+          // Your table rows
+      }
+  } else {
+      echo "<tr><td colspan='5'>No records found</td></tr>";
+  }
+
+       
+        // Query to get the total number of students
+        $total_students_query = "SELECT COUNT(*) as total FROM student";
+        $total_students_result = mysqli_query($con, $total_students_query);
+        $total_students_data = mysqli_fetch_assoc($total_students_result);
+        $total_students = $total_students_data['total'];
+
+
+        $total_requests_query = "SELECT COUNT(*) as total FROM request";
+        $total_requests_result = mysqli_query($con, $total_requests_query);
+        $total_requests_data = mysqli_fetch_assoc($total_requests_result);
+        $total_requests = $total_requests_data['total'];
+
+
+    // Query to fetch daily check-in and check-out counts
+    $daily_query = "
+     SELECT DATE(checkin) as date, 
+           COUNT(checkin) as daily_checkins, 
+           COUNT(checkout) as daily_checkouts 
+     FROM tracking 
+     GROUP BY DATE(checkin)";
+    $daily_result = mysqli_query($con, $daily_query);
+
+
+    $status_query = "
+     SELECT status, COUNT(*) as count
+     FROM tracking
+     WHERE status IN ('On Time', 'Late')
+     GROUP BY status";
+
+    $status_result = mysqli_query($con, $status_query);
+
+    // Initialize counts for each status
+    $onTimeCount = 0;
+    $lateCount = 0;
+
+    while ($row = mysqli_fetch_assoc($status_result)) {
+      if ($row['status'] == 'On Time') {
+          $onTimeCount = $row['count'];
+     } elseif ($row['status'] == 'Late') {
+        $lateCount = $row['count'];
+    }
+    }
+
+
+    $reason_query = "
+      SELECT reason, COUNT(*) as count
+      FROM request
+      GROUP BY reason";
+
+    $reason_result = mysqli_query($con, $reason_query);
+
+    // Initialize arrays to store the reasons and their counts
+    $reasons = [];
+    $counts = [];
+
+    // Fetch the results and populate the arrays
+    while ($row = mysqli_fetch_assoc($reason_result)) {
+      $reasons[] = $row['reason'];
+     $counts[] = $row['count'];
+    }
+?>
+
+<html lang="en">
+<head>
+<title>SISWI CURFEW TRACKING SYSTEM</title>
+<link rel="icon" type="image/png" href="icons/sictrackslogo.png"/>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" type="text/css" href="sidebar.css" />
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/0.4.1/html2canvas.min.js"></script>
+
+
+<header>
+    <div>
+        <h2>SISWI Curfew Tracking System</h2>
+    </div>
+    <div>
+        <span>Welcome, User ID: <?php echo $admin_id; ?></span>
+        <a href="login.php" class="logout">Logout</a>
+    </div>
+</header>
+
+
+
+<style>
+    body {
+        background: #efe8fb;
+    }
+
+    html, body {
+        height: 100%;
+        margin-top: 24;
+        overflow-x: hidden;
+        margin-left: 0;
+        
+    }
+
+
+    /* Fixed Header Styling */
+    header {
+            position: fixed;
+            top: 0;
+            width: 98%;
+            background-color: #020154;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            
+        }
+
+        header h2 {
+            margin: 0;
+        }
+
+        header a.logout {
+            color: white;
+            margin-left: 20px;
+            text-decoration: none;
+            padding: 8px 12px;
+            background-color: #ff6347;
+            border-radius: 5px;
+        }
+
+
+    .dashboard-content {
+        margin-left: 16%;
+        padding: 20px;
+    }
+
+    .dashboard-header {
+        font-size: 60px;
+        color: black;
+        font-family: "Times New Roman", Times, serif;
+        text-align: center;
+    }
+
+    .stats, .logs {
+        background-color: #ffffff;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        margin-top: 17px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-box {
+        text-align: center;
+        margin-bottom: 20px;
+        display: flex;
+    justify-content: space-around;
+    }
+
+    .stat-box h3 {
+        font-size: 18px;
+        color: #333333;
+    }
+
+    .stat-box p {
+        font-size: 24px;
+        font-weight: bold;
+        color: #007bff;
+    }
+
+
+    .stat-item {
+    flex: 1;
+    text-align: center;
+ }
+
+
+    .chart-grid {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 3px;
+    }
+
+    .chart-box {
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        width: 35%; /* Adjust width to control the size */
+        margin-top: 10px;
+    }
+    #activityChart, #statusOverviewChart {
+    width: 300px;
+    height: 300px;
+    }
+
+    /* Fixed Footer Styling */
+    footer {
+            bottom: 0;
+            width: 100%;
+            background-color: white;
+            color: grey;
+            text-align: center;
+            padding: 10px;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.2);
+            margin-top: 1%;
+        }
+
+        footer p {
+            margin-left: 16%;
+            font-size: 14px;
+        }
+  
+
+        @media print {
+    /* Hide elements that are not needed for printing */
+    .print-button, aside, header, footer {
+        display: none; /* Hide these elements */
+    }
+
+    /* Ensure the dashboard content takes full width in print */
+    .dashboard-content {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        page-break-after: always; /* Ensure sections start on a new page */
+    }
+
+    /* Avoid breaking charts across pages */
+    .chart-box {
+        page-break-inside: avoid; /* Avoid breaking charts across pages */
+        margin-bottom: 20px; /* Add spacing between charts */
+    }
+
+    /* Force a page break after each chart grid */
+    .chart-grid {
+        page-break-after: always; /* Start each chart on a new page */
+    }
+}
+</style>
+
+</head>
+<body>
+
+<aside >
+  <img src="icons/UptmLogo.png" alt="Logo UPTM" style="margin-top:70px;width:190px;height:90px;">
+  <a href="dashboard.php"  class='active'><i class="fa fa-user-o " aria-hidden="true"></i>DASHBOARD</a>
+  <a href="AddStudent.php"><i class="fa fa-laptop" aria-hidden="true"></i>ADD NEW STUDENT</a>
+  <a href="StudentData.php"><i class="fa fa-clone" aria-hidden="true"></i>STUDENT LIST</a>
+  <a href="admindata.php" style="margin-left:40px;"><i class="fa fa-star-o" aria-hidden="true"></i>ADMIN</a>
+  <a href="StudentData.php" style="margin-left:40px;"><i class="fa fa-trash-o" aria-hidden="true"></i>STUDENT</a>
+  <a href="StudReq.php"><i class="fa fa-star-o" aria-hidden="true"></i>STUDENT REQUESTS</a>
+  <a href="TrackStud.php"><i class="fa fa-trash-o" aria-hidden="true"></i>TRACKING STUDENT</a>
+</aside>
+
+
+<div class="dashboard-content">
+    <div class="dashboard-header">Dashboard Overview</div>
+    <button onclick="printReport()" class="print-button">Print Report</button>
+
+
+    <div class="stats">
+    <div class="stat-box">
+        <div class="stat-item">
+            <h3>Total Students</h3>
+            <p><?php echo $total_students; ?></p>
+        </div>
+        <div class="stat-item">
+            <h3>Total Requests</h3>
+            <p><?php echo $total_requests; ?></p>
+        </div>
+    </div>
+</div>
+
+
+    <!-- Chart Section -->
+    <div class="chart-grid">
+
+        <!-- Check-ins vs Check-outs Pie Chart -->
+        <div class="chart-box">
+            <h3>Daily Check-in/Check-out Trends</h3>
+<div class="chart-container" style="width: 45%; margin: auto;">
+<canvas id="checkInCheckOutPieChart"></canvas>
+</div>
+
+<?php
+// Query to get total check-ins and check-outs
+$totals_query = "
+    SELECT 
+        SUM(CASE WHEN checkin IS NOT NULL THEN 1 ELSE 0 END) as total_checkins,
+        SUM(CASE WHEN checkout IS NOT NULL THEN 1 ELSE 0 END) as total_checkouts
+    FROM tracking";
+$totals_result = mysqli_query($con, $totals_query);
+$totals_data = mysqli_fetch_assoc($totals_result);
+
+// Store totals in PHP variables
+$total_checkins = $totals_data['total_checkins'];
+$total_checkouts = $totals_data['total_checkouts'];
+?>
+
+<script>
+    var totalCheckins = <?php echo json_encode($total_checkins); ?>;
+    var totalCheckouts = <?php echo json_encode($total_checkouts); ?>;
+</script>
+
+<script>
+   // Check-ins vs Check-outs Pie Chart
+var checkInCheckOutCtx = document.getElementById('checkInCheckOutPieChart').getContext('2d');
+var checkInCheckOutPieChart = new Chart(checkInCheckOutCtx, {
+    type: 'pie',
+    data: {
+        labels: ['Check-ins', 'Check-outs'],
+        datasets: [{
+            label: 'Total Check-ins vs Check-outs',
+            data: [totalCheckins, totalCheckouts],
+            backgroundColor: [
+                'rgba(54, 162, 235, 0.6)',
+                'rgba(255, 99, 132, 0.6)'
+            ],
+            borderColor: [
+                'rgba(54, 162, 235, 1)',
+                'rgba(255, 99, 132, 1)'
+            ],
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { display: true, position: 'bottom' },
+            title: { display: true }
+        }
+    }
+});
+
+
+</script>
+
+        </div>
+        
+       
+
+        <!-- Status Overview Pie Chart -->
+        <div class="chart-box">
+    <h3>Status Overview: On Time vs Late</h3>
+    <div>
+            <canvas id="statusOverviewChart" style="width: 45%; margin: auto;"></canvas>
+        </div>
+
+<script>
+    var onTimeCount = <?php echo $onTimeCount; ?>;
+    var lateCount = <?php echo $lateCount; ?>;
+
+    var ctx = document.getElementById('statusOverviewChart').getContext('2d');
+    var statusOverviewChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['On Time', 'Late'],
+            datasets: [{
+                data: [onTimeCount, lateCount],
+                backgroundColor: ['#4CAF50', '#FF6347']
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+</script>
+       
+</div>
+
+
+        <!-- Request Reasons Bar Chart -->
+        <div class="chart-box" style="width: 45%; ">
+        <h3>Request Reasons Count</h3>
+        <canvas id="reasonBarChart" style="width: 50%; margin: auto;" ></canvas>
+    </div>
+
+    <script>
+        // Get the PHP arrays and pass them to JavaScript
+        var reasons = <?php echo json_encode($reasons); ?>;
+        var counts = <?php echo json_encode($counts); ?>;
+
+        // Create the Bar Chart
+        var reasonBarCtx = document.getElementById('reasonBarChart').getContext('2d');
+var reasonBarChart = new Chart(reasonBarCtx, {
+    type: 'bar',
+    data: {
+        labels: reasons,
+        datasets: [{
+            label: 'Number of Requests',
+            data: counts,
+            backgroundColor: 'rgba(75, 192, 192, 0.6)',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Number of Requests' }},
+            x: { title: { display: true, text: 'Reason' }}
+        },
+        plugins: {
+            title: { display: true, text: 'Request Reasons Overview' },
+            legend: { display: false }
+        }
+    }
+});
+    </script>
+        </div>
+        </div>
+    
+</div>
+<script>
+
+function replaceChartsWithImages() {
+        // Convert each chart to an image
+        const charts = [
+            { id: 'checkInCheckOutPieChart' },
+            { id: 'statusOverviewChart' },
+            { id: 'reasonBarChart' }
+        ];
+
+        charts.forEach(chart => {
+            const canvas = document.getElementById(chart.id);
+            if (canvas) {
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/png');
+                img.style.width = '100%'; // Ensure images fit in the printed layout
+                img.style.height = 'auto';
+                canvas.parentNode.replaceChild(img, canvas);
+            }
+        });
+    }
+
+function printReport() {
+    console.log("Print Report function called");
+    setTimeout(() => {
+        window.print();
+        console.log("Print dialog should appear now");
+    }, 100);
+}
+
+</script>
+
+<!-- Footer Section -->
+<footer>
+    <p>&copy; <?php echo date("Y"); ?> SISWI Curfew Tracking System. All rights reserved.</p>
+</footer>
+
+</body>
+
+
+</html>

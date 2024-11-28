@@ -1,0 +1,24 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The INTERNET permission is required for development. Specifically,
+         the Flutter tool needs it to communicate with the running application
+         to allow setting breakpoints, to provide hot reload, etc.
+    -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+<!-- Receiver for scheduled notifications -->
+    <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+        android:exported="true"/>
+
+    <!-- Receiver for displaying notifications -->
+    <receiver android:name="com.dexterous.flutterlocalnotifications.NotificationReceiver"
+        android:exported="true"/>
+        
+    <!-- Optional: Handle boot events if you want to reschedule notifications after device restart -->
+    <receiver android:enabled="true" android:exported="false" android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+        <intent-filter>
+            <action android:name="android.intent.action.BOOT_COMPLETED"/>
+        </intent-filter>
+    </receiver>
+ 
+</manifest>
